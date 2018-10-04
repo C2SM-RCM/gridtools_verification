@@ -1,0 +1,9 @@
+/build*
+/install*/
+/*.user
+/.project
+/.cproject
+/serialbox
+/external
+/.settings
+

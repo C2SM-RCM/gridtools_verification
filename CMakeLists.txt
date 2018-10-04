@@ -1,0 +1,75 @@
+cmake_minimum_required(VERSION 3.9.0)
+# set the installation prefix
+# Note: setting this *before* the project imposes a default that the user is
+# able to change.
+SET(CMAKE_INSTALL_PREFIX "${CMAKE_SOURCE_DIR}/install/" CACHE PATH "installation prefix")
+
+project(gridtools-verification VERSION 0.10.0 LANGUAGES CXX C)
+
+set(gridtools-verification_VERSION_STRING 
+    "${gridtools-verification_VERSION_MAJOR}.${gridtools-verification_VERSION_MINOR}.${gridtools-verification_VERSION_PATCH}")
+set(SERIALBOX_VERSION_REQUIRED "2.5.0")
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+#----------------- CMake options
+# C++11 compiler support
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Do we use terminal colors?
+set(GT_VERIFICATION_USE_COLOR "ON" CACHE BOOL "Enable colored terminal output")
+if(NOT(GT_VERIFICATION_USE_COLOR))
+    add_definitions(-DDYCORE_NO_COLOR)
+endif()
+
+# Set build type to Release if nothing was specified
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING 
+    "Choose the type of build, options are: Debug Release" FORCE)
+    message(STATUS "Setting build type to 'Release' as none was specified")
+endif(NOT CMAKE_BUILD_TYPE)
+
+#----------------- find Serialbox2
+find_package( Serialbox "${SERIALBOX_VERSION_REQUIRED}" REQUIRED HINTS
+    "${CMAKE_CURRENT_LIST_DIR}/../serialbox2/install/cmake"
+    "${SERIALBOX_ROOT}/cmake"
+    "${SERIALBOX_DIR}/cmake"
+    "$ENV{SERIALBOX_ROOT}/cmake")
+
+#----------------- find boost
+set( Boost_NO_SYSTEM_PATHS ON )
+set( BOOST_INCLUDEDIR "${SERIALBOX_BOOST_INCLUDE_DIRS}" ) 
+set( REQUIRED_BOOST_COMPONENTS ${SERIALBOX_REQUIRED_BOOST_COMPONENTS} program_options system)
+find_package( Boost ${SERIALBOX_BOOST_VERSION} REQUIRED ${REQUIRED_BOOST_COMPONENTS})
+
+#----------------- build Google Test
+# Since CMake has a problem with pthread when passed to nvcc.
+# (https://gitlab.kitware.com/cmake/cmake/issues/18008)
+set(gtest_disable_pthreads ON CACHE BOOL "" FORCE)
+add_subdirectory(libs/googletest)
+
+#----------------- build verification framework
+add_subdirectory(src)
+
+#----------------- install verification framework
+# building for development
+option(GT_VERIFICATION_DEVELOPMENT "If enabled, headers will be installed as symlinks to the src directory, to allow IDEs to jump between files" OFF)
+
+if(NOT GT_VERIFICATION_DEVELOPMENT)
+  install( DIRECTORY src/ DESTINATION "include/gridtools_verification" FILES_MATCHING PATTERN "*.h" )
+else()
+  file(GLOB_RECURSE header_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/src" "src/*.h")
+  foreach(file ${header_files})
+    get_filename_component(directory ${file} DIRECTORY)
+    install(DIRECTORY DESTINATION include/gridtools_verification/${directory})
+    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/src/${file} ${CMAKE_INSTALL_PREFIX}/include/gridtools_verification/${file})")
+  endforeach()
+endif()
+
+install(EXPORT gridtools_verificationTargets DESTINATION cmake NAMESPACE gridtools_verification::)
+
+#----------------- packaging
+include(cmake/Packaging.cmake)
+
+add_subdirectory(unittest)
